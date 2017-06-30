@@ -8,14 +8,11 @@ import com.sun.jna.ptr.ByteByReference;
 import com.sun.jna.ptr.NativeLongByReference;
 
 import javax.swing.*;
-import javax.swing.tree.DefaultMutableTreeNode;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.*;
 import java.util.Timer;
-
-import static java.lang.Thread.sleep;
 
 /**
  * Created by wsx on 2017-06-29.
@@ -29,6 +26,7 @@ public class ControlFrame extends JFrame{
     private HCNetSDK.NET_DVR_CLIENTINFO m_strClientInfo;//用户参数
 
     private boolean bRealPlay;//是否在预览.
+    private boolean bRecordVideo;
     private NativeLong lUserID;//用户句柄
     private static NativeLong lPreviewHandle;//预览句柄
     private NativeLongByReference m_lPort;//回调预览时播放库端口指针
@@ -50,6 +48,7 @@ public class ControlFrame extends JFrame{
     public ControlFrame()
     {
         bRealPlay = false;
+        bRecordVideo = false;
         lUserID = new NativeLong(-1);
         lPreviewHandle = new NativeLong(-1);
         m_lPort = new NativeLongByReference(new NativeLong(-1));
@@ -208,7 +207,7 @@ public class ControlFrame extends JFrame{
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
-                PTZControlAll(lRealHandle, HCNetSDK.PAN_LEFT, 1);
+                PTZControlAll(lRealHandle, iPTZCommand, 1);
             }
         }, time_ms);
     }
@@ -319,15 +318,52 @@ public class ControlFrame extends JFrame{
             cf.CapturePicture();
             cf.Rotate(lPreviewHandle, HCNetSDK.PAN_LEFT, 1000);
             try {
-                sleep(2500);
+                Thread.sleep(2500);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
     }
+
+    public void RecordVideo()
+    {
+        if(bRecordVideo == false) {
+            String videoname = "./videos/" + String.valueOf(System.currentTimeMillis()) + ".mp4";
+
+            boolean isvideobegin = hCNetSDK.NET_DVR_SaveRealData(lUserID, videoname);
+            if(isvideobegin == false)
+            {
+                System.out.println("开始录像失败");
+                return;
+            }
+            System.out.println("开始录像");
+            bRecordVideo = true;
+        } else {
+            boolean isvideoend = hCNetSDK.NET_DVR_StopSaveRealData(lUserID);
+            if(isvideoend == false)
+            {
+                System.out.println("结束录像失败");
+                return;
+            }
+            System.out.println("结束录像");
+            bRecordVideo = false;
+        }
+    }
+
     public static void main(String args[])
     {
-        cmddemo();
+        ControlFrame cf = new ControlFrame();
+        cf.initSDKandUserSignup();
+        cf.StartRealPlay(0);
+        cf.RecordVideo();
+        Timer t = new Timer();
+        t.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                cf.RecordVideo();
+            }
+        }, 10000);
+        //cmddemo();
         //CollectPic();
 //        ControlFrame cf = new ControlFrame();
 //        cf.initSDKandUserSignup();

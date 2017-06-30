@@ -1,5 +1,8 @@
-.idea
+/.idea/*
 /out/*
 hkvi.jar
 hkvi.iml
 /pictures/*
+/videos/*
+!/pictures/README.md
+!/videos/README.md

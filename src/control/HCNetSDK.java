@@ -3053,7 +3053,7 @@ public static class RECV_ALARM extends Structure{
 }
 
 
-//播放库函数声明,PlayCtrl.dll
+//播放库函数声明,PlayCtrl.dll，有文件方式播放和流播放
 interface PlayCtrl extends StdCallLibrary
 {
     PlayCtrl INSTANCE = (PlayCtrl) Native.loadLibrary("PlayCtrl",
@@ -3062,7 +3062,15 @@ interface PlayCtrl extends StdCallLibrary
     public static final int STREAME_REALTIME = 0;
     public static final int STREAME_FILE = 1;
 
-    boolean PlayM4_GetPort(NativeLongByReference nPort);
+
+    boolean PlayM4_OpenFile(NativeLong nPort, String sFileName);//打开文件
+    boolean PlayM4_CloseFile(NativeLong nPort);//关闭文件
+    int PlayM4_Pause(NativeLong nPort, int nPause);//暂停播放
+    int PlayM4_Slow(NativeLong nPort);//慢放
+    int PlayM4_Fast(NativeLong nPort);//快放
+    int PlayM4_GetLastError(NativeLong nPort);//获取错误码
+
+    boolean PlayM4_GetPort(NativeLongByReference nPort);//获取未使用的通道号
     boolean PlayM4_OpenStream(NativeLong nPort, ByteByReference pFileHeadBuf, int nSize, int nBufPoolSize);
     boolean PlayM4_InputData(NativeLong nPort, ByteByReference pBuf, int nSize);
     boolean PlayM4_CloseStream(NativeLong nPort);
