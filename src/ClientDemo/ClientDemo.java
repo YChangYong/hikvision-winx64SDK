@@ -1267,12 +1267,11 @@ public class ClientDemo extends javax.swing.JFrame
             {
                 //获取选中的通道名,对通道名进行分析:
                 String sChannelName = ((DefaultMutableTreeNode)tp.getLastPathComponent()).toString();
-                System.out.println(sChannelName);
+                
                 if(sChannelName.charAt(0) == 'C')//Camara开头表示模拟通道
                 {
                 //子字符串中获取通道号
                 iChannelNum = Integer.parseInt(sChannelName.substring(6));
-                    System.out.println(iChannelNum);
                 }
                 else
                 {

@@ -18,11 +18,12 @@ import java.util.Timer;
 
 /**
  * Created by wsx on 2017-06-29.
+ * 总的流程：初始化SDK->用户注册服务->开始预览->云台控制->停止预览->用户注销服务->释放SDK资源
  */
 public class ControlFrame extends JFrame{
     private HCNetSDK hCNetSDK = HCNetSDK.INSTANCE;
-
     private PlayCtrl playControl = PlayCtrl.INSTANCE;
+
     private HCNetSDK.NET_DVR_DEVICEINFO_V30 m_strDeviceInfo;//设备信息
     private HCNetSDK.NET_DVR_CLIENTINFO m_strClientInfo;//用户参数
 
@@ -47,8 +48,9 @@ public class ControlFrame extends JFrame{
         lPreviewHandle = new NativeLong(-1);
         m_lPort = new NativeLongByReference(new NativeLong(-1));
 
-        this.setLocationRelativeTo(null);
+
         this.setSize(800,600);
+        this.setLocationRelativeTo(null);
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         this.setVisible(true);
 
@@ -60,6 +62,40 @@ public class ControlFrame extends JFrame{
         });
     }
 
+    /**
+     * 初始化SDK和用户注册
+     */
+    public void initSDKandUserSignup()
+    {
+        boolean initSuc = hCNetSDK.NET_DVR_Init();
+        if (initSuc != true)
+        {
+            System.out.println("初始化失败");
+        }
+
+        if(bRealPlay)
+        {
+            System.out.println("注册新用户请先停止当前预览!");
+            return;
+        }
+        if(lUserID.longValue() > -1)
+        {
+            hCNetSDK.NET_DVR_Logout_V30(lUserID);
+            lUserID = new NativeLong(-1);
+        }
+        m_strDeviceInfo = new HCNetSDK.NET_DVR_DEVICEINFO_V30();
+        lUserID = hCNetSDK.NET_DVR_Login_V30(m_sDeviceIP, port, username, password, m_strDeviceInfo);
+        long userID = lUserID.longValue();
+        if (userID == -1)
+        {
+            System.out.println("注册失败");
+            return;
+        }
+    }
+
+    /**
+     * 开始预览
+     */
     public void StartRealPlay()
     {
         if (lUserID.intValue() == -1)
@@ -69,7 +105,7 @@ public class ControlFrame extends JFrame{
         }
 
         if (bRealPlay == false) {
-            int iChannelNum = 1;
+            int iChannelNum = m_strDeviceInfo.byStartChan;
             if (iChannelNum == -1) {
                 System.out.println("请选择要预览的通道");
                 return;
@@ -104,36 +140,11 @@ public class ControlFrame extends JFrame{
                 m_lPort.setValue(new NativeLong(-1));
             }
         }
-
-    }
-    public void initSDKandUserSignup()
-    {
-        boolean initSuc = hCNetSDK.NET_DVR_Init();
-        if (initSuc != true)
-        {
-            System.out.println("初始化失败");
-        }
-
-        if(bRealPlay)
-        {
-            System.out.println("注册新用户请先停止当前预览!");
-            return;
-        }
-        if(lUserID.longValue() > -1)
-        {
-            hCNetSDK.NET_DVR_Logout_V30(lUserID);
-            lUserID = new NativeLong(-1);//---------------------------------------------------
-        }
-        m_strDeviceInfo = new HCNetSDK.NET_DVR_DEVICEINFO_V30();
-        lUserID = hCNetSDK.NET_DVR_Login_V30(m_sDeviceIP, port, username, password, m_strDeviceInfo);
-        long userID = lUserID.longValue();
-        if (userID == -1)
-        {
-            System.out.println("注册失败");
-            return;
-        }
     }
 
+    /**
+     * 用户离开操作：停止预览->用户注销登录->释放SDK资源
+     */
     public void UserExit()
     {
         if (lPreviewHandle.longValue() > -1)
@@ -152,9 +163,9 @@ public class ControlFrame extends JFrame{
 
     /**
      * 控制转的函数
-     * @param lRealHandle
-     * @param iPTZCommand
-     * @param iStop
+     * @param lRealHandle   预览句柄
+     * @param iPTZCommand   操作命令
+     * @param iStop          是否停止这个命令
      */
     public void PTZControlAll(NativeLong lRealHandle, int iPTZCommand, int iStop) {
         int iSpeed = 0;
@@ -179,6 +190,12 @@ public class ControlFrame extends JFrame{
     }
 
 
+    /**
+     *
+     * @param lRealHandle   预览句柄
+     * @param iPTZCommand   控制命令
+     * @param time_ms       命令持续时间（毫秒）
+     */
     public void Rotate(NativeLong lRealHandle, int iPTZCommand, long time_ms)
     {
         PTZControlAll(lRealHandle, HCNetSDK.PAN_LEFT, 0);
@@ -192,15 +209,58 @@ public class ControlFrame extends JFrame{
         }, time_ms);
     }
 
+    /**
+     * 抓图bmp到工程根目录下的pictures文件夹中
+     */
+    public void CapturePicture()
+    {
+        String sPicName = "./pictures/"+ System.currentTimeMillis() + ".bmp";
+        if (hCNetSDK.NET_DVR_CapturePicture(lPreviewHandle,sPicName))
+        {
+            System.out.println("抓图:" + sPicName);
+        }
+        else
+        {
+            System.out.println("抓图失败");
+            return;
+        }
+
+    }
+
+
     public static void main(String args[])
     {
         ControlFrame cf = new ControlFrame();
         cf.initSDKandUserSignup();
         cf.StartRealPlay();
-        Scanner s = new Scanner(System.in);
-        while(true) {
-            long time = s.nextLong();
-            cf.Rotate(lPreviewHandle, HCNetSDK.PAN_LEFT, time);
+        while(true)
+        {
+            System.out.println("1.控制\t2.抓图");
+            Scanner s = new Scanner(System.in);
+            int cmd = s.nextInt();
+            switch(cmd) {
+                case 1:
+                    System.out.println("(23.左\t24.右)\t\t加个空格后面跟时间，单位毫秒");
+                    int direction = s.nextInt();
+                    long time = s.nextLong();
+                    if (direction != 23 && direction != 24) {
+                        System.out.println("指令错误");
+                        continue;
+                    }
+                    if (time > 10000 || time < 0) {
+                        System.out.println("指令错误");
+                        continue;
+                    }
+                    cf.Rotate(lPreviewHandle, direction, time);
+                    break;
+                case 2:
+                    cf.CapturePicture();
+                    System.out.println("抓图成功");
+                    break;
+                default:
+                    System.out.println("命令错误");
+                        break;
+            }
         }
     }
 }
