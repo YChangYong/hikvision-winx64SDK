@@ -1,6 +1,5 @@
 package control;
 
-import ClientDemo.JFramePTZControl;
 import com.sun.jna.Native;
 import com.sun.jna.NativeLong;
 import com.sun.jna.Pointer;
@@ -15,6 +14,8 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.*;
 import java.util.Timer;
+
+import static java.lang.Thread.sleep;
 
 /**
  * Created by wsx on 2017-06-29.
@@ -32,12 +33,17 @@ public class ControlFrame extends JFrame{
     private static NativeLong lPreviewHandle;//预览句柄
     private NativeLongByReference m_lPort;//回调预览时播放库端口指针
 
+    FRealDataCallBack fRealDataCallBack;//预览回调函数实现
+
     private final String m_sDeviceIP = "192.168.134.88";
     private final String username = "admin";
     private final String password  = "wsl87654321.";
     private final short port = 8000;
 
 
+    public Component getJFrameObject() {
+        return this;
+    }
 
 
 
@@ -47,7 +53,7 @@ public class ControlFrame extends JFrame{
         lUserID = new NativeLong(-1);
         lPreviewHandle = new NativeLong(-1);
         m_lPort = new NativeLongByReference(new NativeLong(-1));
-
+        fRealDataCallBack= new FRealDataCallBack();
 
         this.setSize(800,600);
         this.setLocationRelativeTo(null);
@@ -95,8 +101,9 @@ public class ControlFrame extends JFrame{
 
     /**
      * 开始预览
+     * @param isCallBack   判断是否回调预览,0,不回调 1 回调
      */
-    public void StartRealPlay()
+    public void StartRealPlay(int isCallBack)
     {
         if (lUserID.intValue() == -1)
         {
@@ -107,14 +114,13 @@ public class ControlFrame extends JFrame{
         if (bRealPlay == false) {
             int iChannelNum = m_strDeviceInfo.byStartChan;
             if (iChannelNum == -1) {
-                System.out.println("请选择要预览的通道");
+                System.out.println("预览通道号错误");
                 return;
             }
 
             m_strClientInfo = new HCNetSDK.NET_DVR_CLIENTINFO();
             m_strClientInfo.lChannel = new NativeLong(iChannelNum);
 
-            int isCallBack = 0;//在此判断是否回调预览,0,不回调 1 回调
             if (isCallBack == 0) {
                 final W32API.HWND hwnd = new W32API.HWND(Native.getComponentPointer(this));
                 m_strClientInfo.hPlayWnd = hwnd;
@@ -122,6 +128,9 @@ public class ControlFrame extends JFrame{
                         m_strClientInfo, null, null, true);
             } else {
                 //回调预览
+                m_strClientInfo.hPlayWnd = null;
+                lPreviewHandle = hCNetSDK.NET_DVR_RealPlay_V30(lUserID,
+                        m_strClientInfo, fRealDataCallBack, null, true);
             }
             long previewSucValue = lPreviewHandle.longValue();
             if (previewSucValue == -1) {
@@ -132,13 +141,8 @@ public class ControlFrame extends JFrame{
         }
         else
         {
-            hCNetSDK.NET_DVR_StopRealPlay(lPreviewHandle);
-            bRealPlay = false;
-            if(m_lPort.getValue().intValue() != -1)
-            {
-                playControl.PlayM4_Stop(m_lPort.getValue());
-                m_lPort.setValue(new NativeLong(-1));
-            }
+            System.out.println("使bRealPlay = false");
+            return;
         }
     }
 
@@ -209,13 +213,58 @@ public class ControlFrame extends JFrame{
         }, time_ms);
     }
 
+
+    class FRealDataCallBack implements HCNetSDK.FRealDataCallBack_V30
+    {
+        //预览回调
+        public void invoke(NativeLong lRealHandle, int dwDataType, ByteByReference pBuffer, int dwBufSize, Pointer pUser)
+        {
+            W32API.HWND hwnd = new W32API.HWND(Native.getComponentPointer(getJFrameObject()));
+            switch (dwDataType)
+            {
+                case HCNetSDK.NET_DVR_SYSHEAD: //系统头
+
+                    if (!playControl.PlayM4_GetPort(m_lPort)) //获取播放库未使用的通道号
+                    {
+                        break;
+                    }
+
+                    if (dwBufSize > 0)
+                    {
+                        if (!playControl.PlayM4_SetStreamOpenMode(m_lPort.getValue(), PlayCtrl.STREAME_REALTIME))  //设置实时流播放模式
+                        {
+                            break;
+                        }
+
+                        if (!playControl.PlayM4_OpenStream(m_lPort.getValue(), pBuffer, dwBufSize, 1024 * 1024)) //打开流接口
+                        {
+                            break;
+                        }
+
+                        if (!playControl.PlayM4_Play(m_lPort.getValue(), hwnd)) //播放开始
+                        {
+                            break;
+                        }
+                    }
+                case HCNetSDK.NET_DVR_STREAMDATA:   //码流数据
+                    if ((dwBufSize > 0) && (m_lPort.getValue().intValue() != -1))
+                    {
+                        if (!playControl.PlayM4_InputData(m_lPort.getValue(), pBuffer, dwBufSize))  //输入流数据
+                        {
+                            break;
+                        }
+                    }
+            }
+        }
+    }
+
     /**
      * 抓图bmp到工程根目录下的pictures文件夹中
      */
     public void CapturePicture()
     {
         String sPicName = "./pictures/"+ System.currentTimeMillis() + ".bmp";
-        if (hCNetSDK.NET_DVR_CapturePicture(lPreviewHandle,sPicName))
+        if (hCNetSDK.NET_DVR_CapturePicture(lPreviewHandle, sPicName))
         {
             System.out.println("抓图:" + sPicName);
         }
@@ -227,12 +276,11 @@ public class ControlFrame extends JFrame{
 
     }
 
-
-    public static void main(String args[])
+    public static void cmddemo()
     {
         ControlFrame cf = new ControlFrame();
         cf.initSDKandUserSignup();
-        cf.StartRealPlay();
+        cf.StartRealPlay(0);
         while(true)
         {
             System.out.println("1.控制\t2.抓图");
@@ -255,12 +303,34 @@ public class ControlFrame extends JFrame{
                     break;
                 case 2:
                     cf.CapturePicture();
-                    System.out.println("抓图成功");
                     break;
                 default:
                     System.out.println("命令错误");
-                        break;
+                    break;
             }
         }
+    }
+
+    public static void CollectPic() {
+        ControlFrame cf = new ControlFrame();
+        cf.initSDKandUserSignup();
+        cf.StartRealPlay(0);
+        for (int i = 0; i < 5; i++) {
+            cf.CapturePicture();
+            cf.Rotate(lPreviewHandle, HCNetSDK.PAN_LEFT, 1000);
+            try {
+                sleep(2500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    public static void main(String args[])
+    {
+        cmddemo();
+        //CollectPic();
+//        ControlFrame cf = new ControlFrame();
+//        cf.initSDKandUserSignup();
+//        cf.StartRealPlay();
     }
 }
