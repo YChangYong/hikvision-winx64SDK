@@ -1,174 +1,131 @@
 package control;
 
-import com.sun.jna.Native;
 import com.sun.jna.NativeLong;
-import com.sun.jna.Pointer;
-import com.sun.jna.examples.win32.W32API;
-import com.sun.jna.ptr.ByteByReference;
-import com.sun.jna.ptr.NativeLongByReference;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-import java.util.*;
-import java.util.Timer;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.File;
+import java.util.TimerTask;
 
 /**
- * Created by wsx on 2017-06-29.
- * 总的流程：初始化SDK->用户注册服务->开始预览->云台控制->停止预览->用户注销服务->释放SDK资源
+ * Created by wsx on 2017-07-01.
  */
-public class ControlFrame extends JFrame{
-    private HCNetSDK hCNetSDK = HCNetSDK.INSTANCE;
-    private PlayCtrl playControl = PlayCtrl.INSTANCE;
+public class ControlFrame extends JFrame {
 
-    private HCNetSDK.NET_DVR_DEVICEINFO_V30 m_strDeviceInfo;//设备信息
-    private HCNetSDK.NET_DVR_CLIENTINFO m_strClientInfo;//用户参数
+    private JButton left_bt;
+    private JButton right_bt;
+    private JButton screenshot_bt;
+    private JButton startrecoedvideo_bt;
+    private JButton endrecoedvideo_bt;
+    private JButton playback_bt;
+    private JButton contiscreenshot_bt;
 
-    private boolean bRealPlay;//是否在预览.
+    private NativeLong lPreviewHandle;
+    private HCNetSDK hCNetSDK;
+    private NativeLong lUserID;
+
     private boolean bRecordVideo;
-    private NativeLong lUserID;//用户句柄
-    private static NativeLong lPreviewHandle;//预览句柄
-    private NativeLongByReference m_lPort;//回调预览时播放库端口指针
-
-    FRealDataCallBack fRealDataCallBack;//预览回调函数实现
-
-    private final String m_sDeviceIP = "192.168.134.88";
-    private final String username = "admin";
-    private final String password  = "wsl87654321.";
-    private final short port = 8000;
 
 
-    public Component getJFrameObject() {
-        return this;
+    public ControlFrame(NativeLong lPreviewHandle, HCNetSDK hCNetSDK, NativeLong lUserID) {
+        this.lPreviewHandle = lPreviewHandle;
+        this.hCNetSDK = hCNetSDK;
+        this.lUserID = lUserID;
+        bRecordVideo = false;
+        initComponents();
     }
 
+    private void initComponents() {
+        left_bt = new JButton("左");
+        right_bt = new JButton("右");
+        screenshot_bt = new JButton("抓图");
+        startrecoedvideo_bt = new JButton("开始录像");
+        endrecoedvideo_bt = new JButton("结束录像");
+        playback_bt = new JButton("回放");
+        contiscreenshot_bt = new JButton("连续抓图");
 
-
-    public ControlFrame()
-    {
-        bRealPlay = false;
-        bRecordVideo = false;
-        lUserID = new NativeLong(-1);
-        lPreviewHandle = new NativeLong(-1);
-        m_lPort = new NativeLongByReference(new NativeLong(-1));
-        fRealDataCallBack= new FRealDataCallBack();
-
-        this.setSize(800,600);
-        this.setLocationRelativeTo(null);
-        this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        this.setVisible(true);
-
-        this.addWindowListener(new WindowAdapter() {
+        left_bt.addMouseListener(new MouseAdapter() {
             @Override
-            public void windowClosing(WindowEvent e) {
-                UserExit();
+            public void mousePressed(MouseEvent e) {
+                PTZControlAll(lPreviewHandle, HCNetSDK.PAN_LEFT, 0);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                PTZControlAll(lPreviewHandle, HCNetSDK.PAN_LEFT, 1);
             }
         });
-    }
 
-    /**
-     * 初始化SDK和用户注册
-     */
-    public void initSDKandUserSignup()
-    {
-        boolean initSuc = hCNetSDK.NET_DVR_Init();
-        if (initSuc != true)
-        {
-            System.out.println("初始化失败");
-        }
-
-        if(bRealPlay)
-        {
-            System.out.println("注册新用户请先停止当前预览!");
-            return;
-        }
-        if(lUserID.longValue() > -1)
-        {
-            hCNetSDK.NET_DVR_Logout_V30(lUserID);
-            lUserID = new NativeLong(-1);
-        }
-        m_strDeviceInfo = new HCNetSDK.NET_DVR_DEVICEINFO_V30();
-        lUserID = hCNetSDK.NET_DVR_Login_V30(m_sDeviceIP, port, username, password, m_strDeviceInfo);
-        long userID = lUserID.longValue();
-        if (userID == -1)
-        {
-            System.out.println("注册失败");
-            return;
-        }
-    }
-
-    /**
-     * 开始预览
-     * @param isCallBack   判断是否回调预览,0,不回调 1 回调
-     */
-    public void StartRealPlay(int isCallBack)
-    {
-        if (lUserID.intValue() == -1)
-        {
-            System.out.println("请先注册");
-            return;
-        }
-
-        if (bRealPlay == false) {
-            int iChannelNum = m_strDeviceInfo.byStartChan;
-            if (iChannelNum == -1) {
-                System.out.println("预览通道号错误");
-                return;
+        right_bt.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                PTZControlAll(lPreviewHandle, HCNetSDK.PAN_RIGHT, 0);
             }
 
-            m_strClientInfo = new HCNetSDK.NET_DVR_CLIENTINFO();
-            m_strClientInfo.lChannel = new NativeLong(iChannelNum);
-
-            if (isCallBack == 0) {
-                final W32API.HWND hwnd = new W32API.HWND(Native.getComponentPointer(this));
-                m_strClientInfo.hPlayWnd = hwnd;
-                lPreviewHandle = hCNetSDK.NET_DVR_RealPlay_V30(lUserID,
-                        m_strClientInfo, null, null, true);
-            } else {
-                //回调预览
-                m_strClientInfo.hPlayWnd = null;
-                lPreviewHandle = hCNetSDK.NET_DVR_RealPlay_V30(lUserID,
-                        m_strClientInfo, fRealDataCallBack, null, true);
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                PTZControlAll(lPreviewHandle, HCNetSDK.PAN_RIGHT, 1);
             }
-            long previewSucValue = lPreviewHandle.longValue();
-            if (previewSucValue == -1) {
-                System.out.println("预览失败");
-                return;
+        });
+
+        screenshot_bt.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                CapturePicture();
             }
-            bRealPlay = true;
-        }
-        else
-        {
-            System.out.println("使bRealPlay = false");
-            return;
-        }
-    }
+        });
 
-    /**
-     * 用户离开操作：停止预览->用户注销登录->释放SDK资源
-     */
-    public void UserExit()
-    {
-        if (lPreviewHandle.longValue() > -1)
-        {
-            hCNetSDK.NET_DVR_StopRealPlay(lPreviewHandle);
-        }
+        startrecoedvideo_bt.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                startRecodeVideo();
+            }
+        });
 
-        if(lUserID.intValue() > -1)
-        {
-            hCNetSDK.NET_DVR_Logout_V30(lUserID);
-        }
+        endrecoedvideo_bt.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                endRecodeVideo();
+            }
+        });
 
-        hCNetSDK.NET_DVR_Cleanup();
+        contiscreenshot_bt.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                contiCapturePicture();
+            }
+        });
+
+        playback_bt.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                searchFile();
+            }
+        });
+
+        setSize(400, 300);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+        setLayout(new GridLayout(4, 2));
+        add(left_bt);
+        add(startrecoedvideo_bt);
+        add(right_bt);
+        add(endrecoedvideo_bt);
+        add(screenshot_bt);
+        add(playback_bt);
+        add(contiscreenshot_bt);
+        setVisible(true);
     }
 
 
     /**
      * 控制转的函数
-     * @param lRealHandle   预览句柄
-     * @param iPTZCommand   操作命令
-     * @param iStop          是否停止这个命令
+     *
+     * @param lRealHandle 预览句柄
+     * @param iPTZCommand 操作命令
+     * @param iStop       是否停止这个命令
      */
     public void PTZControlAll(NativeLong lRealHandle, int iPTZCommand, int iStop) {
         int iSpeed = 0;
@@ -192,181 +149,98 @@ public class ControlFrame extends JFrame{
         }
     }
 
-
-    /**
-     *
-     * @param lRealHandle   预览句柄
-     * @param iPTZCommand   控制命令
-     * @param time_ms       命令持续时间（毫秒）
-     */
-    public void Rotate(NativeLong lRealHandle, int iPTZCommand, long time_ms)
-    {
-        PTZControlAll(lRealHandle, HCNetSDK.PAN_LEFT, 0);
-
-        java.util.Timer timer = new java.util.Timer();
-        timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                PTZControlAll(lRealHandle, iPTZCommand, 1);
-            }
-        }, time_ms);
-    }
-
-
-    class FRealDataCallBack implements HCNetSDK.FRealDataCallBack_V30
-    {
-        //预览回调
-        public void invoke(NativeLong lRealHandle, int dwDataType, ByteByReference pBuffer, int dwBufSize, Pointer pUser)
-        {
-            W32API.HWND hwnd = new W32API.HWND(Native.getComponentPointer(getJFrameObject()));
-            switch (dwDataType)
-            {
-                case HCNetSDK.NET_DVR_SYSHEAD: //系统头
-
-                    if (!playControl.PlayM4_GetPort(m_lPort)) //获取播放库未使用的通道号
-                    {
-                        break;
-                    }
-
-                    if (dwBufSize > 0)
-                    {
-                        if (!playControl.PlayM4_SetStreamOpenMode(m_lPort.getValue(), PlayCtrl.STREAME_REALTIME))  //设置实时流播放模式
-                        {
-                            break;
-                        }
-
-                        if (!playControl.PlayM4_OpenStream(m_lPort.getValue(), pBuffer, dwBufSize, 1024 * 1024)) //打开流接口
-                        {
-                            break;
-                        }
-
-                        if (!playControl.PlayM4_Play(m_lPort.getValue(), hwnd)) //播放开始
-                        {
-                            break;
-                        }
-                    }
-                case HCNetSDK.NET_DVR_STREAMDATA:   //码流数据
-                    if ((dwBufSize > 0) && (m_lPort.getValue().intValue() != -1))
-                    {
-                        if (!playControl.PlayM4_InputData(m_lPort.getValue(), pBuffer, dwBufSize))  //输入流数据
-                        {
-                            break;
-                        }
-                    }
-            }
-        }
-    }
-
     /**
      * 抓图bmp到工程根目录下的pictures文件夹中
      */
-    public void CapturePicture()
-    {
-        String sPicName = "./pictures/"+ System.currentTimeMillis() + ".bmp";
-        if (hCNetSDK.NET_DVR_CapturePicture(lPreviewHandle, sPicName))
-        {
+    public void CapturePicture() {
+        String sPicName = "./pictures/" + System.currentTimeMillis() + ".bmp";
+        if (hCNetSDK.NET_DVR_CapturePicture(lPreviewHandle, sPicName)) {
             System.out.println("抓图:" + sPicName);
-        }
-        else
-        {
+        } else {
             System.out.println("抓图失败");
             return;
         }
-
     }
 
-    public static void cmddemo()
-    {
-        ControlFrame cf = new ControlFrame();
-        cf.initSDKandUserSignup();
-        cf.StartRealPlay(0);
-        while(true)
-        {
-            System.out.println("1.控制\t2.抓图");
-            Scanner s = new Scanner(System.in);
-            int cmd = s.nextInt();
-            switch(cmd) {
-                case 1:
-                    System.out.println("(23.左\t24.右)\t\t加个空格后面跟时间，单位毫秒");
-                    int direction = s.nextInt();
-                    long time = s.nextLong();
-                    if (direction != 23 && direction != 24) {
-                        System.out.println("指令错误");
-                        continue;
-                    }
-                    if (time > 10000 || time < 0) {
-                        System.out.println("指令错误");
-                        continue;
-                    }
-                    cf.Rotate(lPreviewHandle, direction, time);
-                    break;
-                case 2:
-                    cf.CapturePicture();
-                    break;
-                default:
-                    System.out.println("命令错误");
-                    break;
-            }
+    public void startRecodeVideo() {
+        if (bRecordVideo != false)
+            return;
+
+        String videoname = "./videos/" + String.valueOf(System.currentTimeMillis()) + ".mp4";
+        boolean isvideobegin = hCNetSDK.NET_DVR_SaveRealData(lUserID, videoname);
+        if (isvideobegin == false) {
+            System.out.println("开始录像失败");
+            return;
         }
+        System.out.println("开始录像");
+        bRecordVideo = true;
     }
 
-    public static void CollectPic() {
-        ControlFrame cf = new ControlFrame();
-        cf.initSDKandUserSignup();
-        cf.StartRealPlay(0);
-        for (int i = 0; i < 5; i++) {
-            cf.CapturePicture();
-            cf.Rotate(lPreviewHandle, HCNetSDK.PAN_LEFT, 1000);
+    public void endRecodeVideo() {
+        if (bRecordVideo != true)
+            return;
+
+        boolean isvideoend = hCNetSDK.NET_DVR_StopSaveRealData(lUserID);
+        if (isvideoend == false) {
+            System.out.println("结束录像失败");
+            return;
+        }
+        System.out.println("结束录像");
+        bRecordVideo = false;
+    }
+
+
+    public void contiCapturePicture() {
+        for (int i = 0; i < 6; i++) {
+            CapturePicture();
+
+            hCNetSDK.NET_DVR_PTZControlWithSpeed(lPreviewHandle, HCNetSDK.PAN_LEFT, 0, 3);
+
+            java.util.Timer timer = new java.util.Timer();
+            timer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    PTZControlAll(lPreviewHandle, HCNetSDK.PAN_LEFT, 1);
+                }
+            }, 1000);
+
             try {
                 Thread.sleep(2500);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
+        System.out.println("连续抓图完毕");
     }
 
-    public void RecordVideo()
+    public String searchFile()
     {
-        if(bRecordVideo == false) {
-            String videoname = "./videos/" + String.valueOf(System.currentTimeMillis()) + ".mp4";
+        JFileChooser jfc=new JFileChooser(new File("./videos/"));
 
-            boolean isvideobegin = hCNetSDK.NET_DVR_SaveRealData(lUserID, videoname);
-            if(isvideobegin == false)
-            {
-                System.out.println("开始录像失败");
-                return;
+        jfc.setFileFilter(new javax.swing.filechooser.FileFilter() {
+            public boolean accept(File f) { //设定可用的文件的后缀名
+                if(f.getName().endsWith(".mp4")||f.isDirectory()){
+                    return true;
+                }
+                return false;
             }
-            System.out.println("开始录像");
-            bRecordVideo = true;
-        } else {
-            boolean isvideoend = hCNetSDK.NET_DVR_StopSaveRealData(lUserID);
-            if(isvideoend == false)
-            {
-                System.out.println("结束录像失败");
-                return;
+            public String getDescription() {
+                return "*.mp4";
             }
-            System.out.println("结束录像");
-            bRecordVideo = false;
+        });
+
+        jfc.setFileSelectionMode(JFileChooser.FILES_ONLY );
+        jfc.showDialog(new JLabel(), "选择");
+
+        File file=jfc.getSelectedFile();
+        if(file.isDirectory()){
+            System.out.println("文件夹:"+file.getAbsolutePath());
+        }else if(file.isFile()){
+            System.out.println("文件:"+file.getAbsolutePath());
         }
+        System.out.println(jfc.getSelectedFile().getName());
+        return null;
     }
 
-    public static void main(String args[])
-    {
-        ControlFrame cf = new ControlFrame();
-        cf.initSDKandUserSignup();
-        cf.StartRealPlay(0);
-        cf.RecordVideo();
-        Timer t = new Timer();
-        t.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                cf.RecordVideo();
-            }
-        }, 10000);
-        //cmddemo();
-        //CollectPic();
-//        ControlFrame cf = new ControlFrame();
-//        cf.initSDKandUserSignup();
-//        cf.StartRealPlay();
-    }
 }
+
