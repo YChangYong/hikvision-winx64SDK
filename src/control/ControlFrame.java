@@ -244,7 +244,7 @@ public class ControlFrame extends JFrame {
 		for (int i = 0; i < 6; i++) {
 			CapturePicture("./pictures/down/");
 
-			Rotate(lPreviewHandle, HCNetSDK.PAN_RIGHT, 1000, 4);
+			Rotate(lPreviewHandle, HCNetSDK.PAN_LEFT, 1000, 4);
 
 			try {
 				Thread.sleep(2500);
@@ -276,8 +276,10 @@ public class ControlFrame extends JFrame {
 			Rotate(lPreviewHandle, HCNetSDK.TILT_UP, 1500, 3);
 			Thread.sleep(3000);
 			scanAllView_up();
-			Rotate(lPreviewHandle, HCNetSDK.TILT_DOWN, 800, 3);
-			Thread.sleep(2300);
+			Rotate(lPreviewHandle, HCNetSDK.PAN_RIGHT, 9000, 3);
+			Thread.sleep(10500);
+			Rotate(lPreviewHandle, HCNetSDK.TILT_DOWN, 1000, 3);
+			Thread.sleep(2500);
 			scanAllView_down();
 			
 		} catch (InterruptedException e) {
@@ -341,7 +343,7 @@ public class ControlFrame extends JFrame {
 	    	File file_up = new File("./pictures/up");
 	    	File[] files_up = file_up.listFiles();
 	    	
-	    	File file_down = new File("./pictures/up");
+	    	File file_down = new File("./pictures/down");
 	    	File[] files_down = file_down.listFiles();
 	    	
 	    	int len = files_up.length + files_down.length;
